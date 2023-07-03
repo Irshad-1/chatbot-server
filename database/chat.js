@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { User } = require('./user');
 
 const chatSchema = new mongoose.Schema(
     {
@@ -8,6 +9,7 @@ const chatSchema = new mongoose.Schema(
         },
         userId: {
             type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
             required: true,
         },
         category: {

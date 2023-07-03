@@ -1,7 +1,7 @@
 const { Configuration, OpenAIApi } = require("openai");
-const { Chat } = require('../database/chat');
-const { User } = require('../database/user');
-const jwt = require('jsonwebtoken');
+const { Chat } = require("../database/chat");
+const { User } = require("../database/user");
+const jwt = require("jsonwebtoken");
 const secret = process.env.SECRET;
 const configuration = new Configuration({
     apiKey: process.env.OPENAI_API_KEY,
@@ -12,28 +12,28 @@ const sendMessage = async (req, res) => {
     try {
         const { token } = req.headers;
         if (!token) {
-            return res.status(401).send({ message: 'No token provided' });
+            return res.status(401).send({ message: "No token provided" });
         }
         const decoded = jwt.verify(token, secret);
         const user = await User.findOne({ _id: decoded._id });
         if (!user) {
-            return res.status(404).send({ message: 'User not found' });
+            return res.status(404).send({ message: "User not found" });
         }
         if (!configuration.apiKey) {
             res.status(500).json({
                 error: {
                     message: "OpenAI API key not configured, please follow instructions in README.md",
-                }
+                },
             });
             return;
         }
 
-        const message = req.body.message || '';
+        const message = req.body.message || "";
         if (message.trim().length === 0) {
             res.status(400).json({
                 error: {
                     message: "Please enter a valid message",
-                }
+                },
             });
             return;
         }
@@ -41,12 +41,11 @@ const sendMessage = async (req, res) => {
             model: "text-davinci-003",
             prompt: generatePrompt(message),
             temperature: 0.1,
-            max_tokens: 2000
+            max_tokens: 2000,
         });
         if (completion.data.choices[0].text.trim() === "Unknown") {
             res.status(200).json({ result: "Please ask a relevant question." });
-        }
-        else {
+        } else {
             const chatResponse = completion.data.choices[0].text;
             const indexOfOpeningBracket = chatResponse.indexOf("(");
             const indexOfClosingBracket = chatResponse.indexOf(")");
@@ -55,16 +54,15 @@ const sendMessage = async (req, res) => {
             if (category === "Accounts/Finance" || category === "HR" || category === "Systems") {
                 const indexOfSecondOpeningBracket = chatResponse.indexOf("(", indexOfOpeningBracket + 1);
                 const indexOfSecondClosingBracket = chatResponse.indexOf(")", indexOfClosingBracket + 1);
-                const isTicketCreationRequired = chatResponse.substring(indexOfSecondOpeningBracket + 1, indexOfSecondClosingBracket).trim();
+                const isTicketCreationRequired = chatResponse
+                    .substring(indexOfSecondOpeningBracket + 1, indexOfSecondClosingBracket)
+                    .trim();
                 if (isTicketCreationRequired == "true")
                     await Chat.create({ category, question: message, userId: decoded._id });
-
             }
 
-            res.status(200).json({ result: completion.data.choices[0].text.split('(')[0] });
+            res.status(200).json({ result: completion.data.choices[0].text.split("(")[0] });
         }
-
-
     } catch (error) {
         if (error.response) {
             console.error(error.response.status, error.response.data);
@@ -73,24 +71,37 @@ const sendMessage = async (req, res) => {
             console.error(`Error with OpenAI API request: ${error.message}`);
             res.status(500).json({
                 error: {
-                    message: 'An error occurred during your request.',
-                }
+                    message: "An error occurred during your request.",
+                },
             });
         }
     }
-}
+};
 
 const fetchAllTickets = async (req, res) => {
     try {
-        const tickets = await Chat.find();
-        return res.status(200).send(tickets);
+        const { token } = req.headers;
+        if (!token) {
+            return res.status(401).send({ message: "No token provided" });
+        }
+        const decoded = jwt.verify(token, secret);
+        const user = await User.findOne({ _id: decoded._id });
+        if (!user) {
+            return res.status(404).send({ message: "User not found" });
+        }
+
+        if (user.role == "project manager") {
+            let tickets = await Chat.find().populate("userId");
+            return res.status(200).send(tickets);
+        } else {
+            return res.status(404).send({ message: "Unauthorized access" });
+        }
     } catch (error) {
-        return res.status(500).send({ message: error || 'Internal Server Error' });
+        return res.status(500).send({ message: error || "Internal Server Error" });
     }
-}
+};
 
 function generatePrompt(message) {
-
     return `
     I am a chat bot of a company named Indus Net Technologies Private Limited. I acts as a helpdesk for common FAQ , griveance redressal , query of employees relating to company's policies and rules and regulation and my responses are based on the below conversations only .  
     Currently I am answering queries related to HR,accounts/Finance and systems department only . My replies also includes suffix of the department name from which the queries are getting answered.For Example:If the queries is answered by "Accounts/Finance department", then add "(Accounts/Finance)" in the end of the reply or if the queries are getting answered by "HR"  then add "(HR)" or if the queries are getting answered by "Systems"  then add "(Systems)" 
@@ -121,4 +132,4 @@ function generatePrompt(message) {
   Employee: ${message}
  chatbot:`;
 }
-module.exports = { sendMessage, fetchAllTickets }
+module.exports = { sendMessage, fetchAllTickets };
